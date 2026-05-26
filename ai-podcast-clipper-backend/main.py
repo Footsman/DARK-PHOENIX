@@ -25,10 +25,14 @@ import whisperx
 class ProcessVideoRequest(BaseModel):
     s3_key: str
 
+class ProcessYouTubeRequest(BaseModel):
+    youtube_url: str
+    s3_key: str
+
 
 image = (modal.Image.from_registry(
     "nvidia/cuda:12.4.0-devel-ubuntu22.04", add_python="3.11")
-    .apt_install(["ffmpeg", "libgl1-mesa-glx", "wget", "libcudnn8", "libcudnn8-dev", "pkg-config", "libavformat-dev", "libavcodec-dev", "libavdevice-dev", "libavutil-dev", "libswscale-dev", "libswresample-dev", "libavfilter-dev", "clang", "build-essential", "gcc", "git"])
+    .apt_install(["ffmpeg", "libgl1-mesa-glx", "wget", "yt-dlp", "libcudnn8", "libcudnn8-dev", "pkg-config", "libavformat-dev", "libavcodec-dev", "libavdevice-dev", "libavutil-dev", "libswscale-dev", "libswresample-dev", "libavfilter-dev", "clang", "build-essential", "gcc", "git"])
     .pip_install_from_requirements("requirements.txt")
     .run_commands([
         "mkdir -p /usr/share/fonts/truetype/custom",
@@ -230,8 +234,16 @@ def create_subtitles_with_ffmpeg(transcript_segments: list, clip_start: float, c
 
     subs.save(subtitle_path)
 
-    ffmpeg_cmd = (f"ffmpeg -y -i {clip_video_path} -vf \"ass={subtitle_path}\" "
-                  f"-c:v h264 -preset fast -crf 23 {output_path}")
+    ffmpeg_cmd = (
+        f"ffmpeg -y -i {clip_video_path} "
+        f"-vf \"ass='{subtitle_path}',"
+        f"drawtext=text='unartch':"
+        f"fontfile=/usr/share/fonts/truetype/custom/Anton-Regular.ttf:"
+        f"fontsize=48:fontcolor=white@0.8:"
+        f"x=w-tw-30:y=30:"
+        f"box=1:boxcolor=black@0.4:boxborderw=8\" "
+        f"-c:v h264 -preset fast -crf 23 {output_path}"
+    )
 
     subprocess.run(ffmpeg_cmd, shell=True, check=True)
 
@@ -239,7 +251,7 @@ def create_subtitles_with_ffmpeg(transcript_segments: list, clip_start: float, c
 def process_clip(base_dir: str, original_video_path: str, s3_key: str, start_time: float, end_time: float, clip_index: int, transcript_segments: list):
     clip_name = f"clip_{clip_index}"
     s3_key_dir = os.path.dirname(s3_key)
-    output_s3_key = f"{s3_key_dir}/{clip_name}.mp4"
+    output_s3_key = f"{s3_key_dir}/{clip_name}_unartch.mp4"
     print(f"Output S3 key: {output_s3_key}")
 
     clip_dir = base_dir / clip_name
@@ -440,6 +452,68 @@ class AiPodcastClipper:
             print(f"Cleaning up temp dir after {base_dir}")
             shutil.rmtree(base_dir, ignore_errors=True)
 
+    @modal.fastapi_endpoint(method="POST")
+    def process_youtube(self, request: ProcessYouTubeRequest, token: HTTPAuthorizationCredentials = Depends(auth_scheme)):
+        if token.credentials != os.environ["AUTH_TOKEN"]:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                detail="Incorrect bearer token", headers={"WWW-Authenticate": "Bearer"})
+
+        youtube_url = request.youtube_url
+        s3_key = request.s3_key
+
+        run_id = str(uuid.uuid4())
+        base_dir = pathlib.Path("/tmp") / run_id
+        base_dir.mkdir(parents=True, exist_ok=True)
+
+        # Download YouTube video using yt-dlp
+        video_path = base_dir / "input.mp4"
+        print(f"Downloading YouTube video: {youtube_url}")
+        yt_dlp_cmd = (
+            f"yt-dlp -f 'bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best' "
+            f"--merge-output-format mp4 "
+            f"-o {str(video_path)} "
+            f"{youtube_url}"
+        )
+        subprocess.run(yt_dlp_cmd, shell=True, check=True)
+        print(f"Downloaded video to {video_path}")
+
+        # Upload original to S3
+        s3_client = boto3.client("s3")
+        print(f"Uploading original to S3: {s3_key}")
+        s3_client.upload_file(str(video_path), os.environ["S3_BUCKET_NAME"], s3_key)
+        print(f"Uploaded original to S3")
+
+        # 1. Transcription
+        transcript_segments_json = self.transcribe_video(base_dir, video_path)
+        transcript_segments = json.loads(transcript_segments_json)
+
+        # 2. Identify moments for clips
+        print("Identifying clip moments")
+        identified_moments_raw = self.identify_moments(transcript_segments)
+
+        cleaned_json_string = identified_moments_raw.strip()
+        if cleaned_json_string.startswith("```json"):
+            cleaned_json_string = cleaned_json_string[len("```json"):].strip()
+        if cleaned_json_string.endswith("```"):
+            cleaned_json_string = cleaned_json_string[:-len("```")].strip()
+
+        clip_moments = json.loads(cleaned_json_string)
+        if not clip_moments or not isinstance(clip_moments, list):
+            print("Error: Identified moments is not a list")
+            clip_moments = []
+
+        print(clip_moments)
+
+        # 3. Process clips
+        for index, moment in enumerate(clip_moments[:5]):
+            if "start" in moment and "end" in moment:
+                print(f"Processing clip {index} from {moment['start']} to {moment['end']}")
+                process_clip(base_dir, video_path, s3_key,
+                             moment["start"], moment["end"], index, transcript_segments)
+
+        if base_dir.exists():
+            print(f"Cleaning up temp dir after {base_dir}")
+            shutil.rmtree(base_dir, ignore_errors=True)
 
 @app.local_entrypoint()
 def main():
