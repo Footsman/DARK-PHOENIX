@@ -52,18 +52,21 @@ export const processVideo = inngest.createFunction(
           });
         });
 
-        await step.fetch(env.PROCESS_VIDEO_ENDPOINT, {
-          method: "POST",
-          body: JSON.stringify(
-            youtubeUrl
-              ? { youtube_url: youtubeUrl, s3_key: s3Key.split("/")[0] }
-              : { s3_key: s3Key }
-          ),
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${env.PROCESS_VIDEO_ENDPOINT_AUTH}`,
-          },
-        });
+        await step.fetch(
+          youtubeUrl ? env.PROCESS_YOUTUBE_ENDPOINT : env.PROCESS_VIDEO_ENDPOINT,
+          {
+            method: "POST",
+            body: JSON.stringify(
+              youtubeUrl
+                ? { youtube_url: youtubeUrl, s3_key: s3Key.split("/")[0] }
+                : { s3_key: s3Key }
+            ),
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${env.PROCESS_VIDEO_ENDPOINT_AUTH}`,
+            },
+          }
+        );
 
         const { clipsFound } = await step.run(
           "create-clips-in-db",

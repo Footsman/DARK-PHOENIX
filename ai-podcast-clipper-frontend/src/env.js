@@ -27,6 +27,7 @@ export const env = createEnv({
     STRIPE_LARGE_CREDIT_PACK: z.string(),
     BASE_URL: z.string(),
     STRIPE_WEBHOOK_SECRET: z.string(),
+    PROCESS_YOUTUBE_ENDPOINT: z.string(),
   },
 
   /**
@@ -61,6 +62,7 @@ export const env = createEnv({
     STRIPE_LARGE_CREDIT_PACK: process.env.STRIPE_LARGE_CREDIT_PACK,
     BASE_URL: process.env.BASE_URL,
     STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
+    PROCESS_YOUTUBE_ENDPOINT: process.env.PROCESS_YOUTUBE_ENDPOINT
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially
