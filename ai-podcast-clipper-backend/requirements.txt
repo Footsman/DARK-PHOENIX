@@ -7,7 +7,7 @@ ffmpegcv
 numpy<2.0
 python_speech_features
 scipy
-scenedetect
+scenedetect==0.5.6
 scikit-learn
 gdown
 pandas
