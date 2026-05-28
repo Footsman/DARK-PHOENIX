@@ -33,6 +33,7 @@ class ProcessYouTubeRequest(BaseModel):
 image = (modal.Image.from_registry(
     "nvidia/cuda:12.4.0-devel-ubuntu22.04", add_python="3.11")
     .apt_install(["ffmpeg", "libgl1-mesa-glx", "wget", "yt-dlp", "libcudnn8", "libcudnn8-dev", "pkg-config", "libavformat-dev", "libavcodec-dev", "libavdevice-dev", "libavutil-dev", "libswscale-dev", "libswresample-dev", "libavfilter-dev", "clang", "build-essential", "gcc", "git"])
+    .pip_install(["setuptools", "wheel"])
     .pip_install_from_requirements("requirements.txt")
     .run_commands([
         "mkdir -p /usr/share/fonts/truetype/custom",
