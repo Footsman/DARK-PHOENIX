@@ -1,0 +1,31 @@
+# Dark Phoenix — Cursor AI Rules
+
+## Project Overview
+This is the Dark Phoenix AI video clipping platform.
+- Frontend: Next.js 15, TypeScript, Tailwind, Shadcn UI, Prisma, Auth.js, Inngest, Stripe
+- Backend: Python, Modal (GPU), WhisperX, Gemini API, ffmpeg, boto3, AWS S3
+
+## Core Rules
+- Preserve existing architecture — make targeted changes only, no big refactors
+- Never commit secrets — all keys go in .env or Modal secrets
+- No SQLite — database is Supabase Postgres via Prisma
+- YouTube download must be server-side using yt-dlp, never in the browser
+- Watermark text is "unartch" burned via ffmpeg drawtext filter into the MP4 file
+- Output format: 9:16 vertical, captions + watermark in every final clip
+
+## Key Files to Understand Before Changing
+- ai-podcast-clipper-backend/main.py — Modal GPU worker, clip rendering
+- ai-podcast-clipper-frontend/src/inngest/functions.ts — job queue
+- ai-podcast-clipper-frontend/src/actions/s3.ts — S3 upload/download
+- ai-podcast-clipper-frontend/src/actions/generation.ts — clip signed URLs
+- ai-podcast-clipper-frontend/src/components/dashboard-client.tsx — main UI
+
+## What Needs to Be Built
+1. YouTube URL ingestion (server-side yt-dlp download → S3 upload)
+2. unartch watermark burned into every clip via ffmpeg drawtext
+3. Google Drive upload of final clips
+4. Deploy frontend to Vercel, backend to Modal
+
+## Assignment Video
+YouTube ID: YRvf00NooN8
+URL: https://www.youtube.com/watch?v=YRvf00NooN8

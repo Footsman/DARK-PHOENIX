@@ -20,28 +20,22 @@ export const processVideo = inngest.createFunction(
     };
 
     try {
-      const { userId, credits, s3Key } = await step.run(
+      const { userId, credits, s3Key, youtubeUrl } = await step.run(
         "check-credits",
         async () => {
           const uploadedFile = await db.uploadedFile.findUniqueOrThrow({
-            where: {
-              id: uploadedFileId,
-            },
+            where: { id: uploadedFileId },
             select: {
-              user: {
-                select: {
-                  id: true,
-                  credits: true,
-                },
-              },
+              user: { select: { id: true, credits: true } },
               s3Key: true,
+              youtubeUrl: true,
             },
           });
-
           return {
             userId: uploadedFile.user.id,
             credits: uploadedFile.user.credits,
             s3Key: uploadedFile.s3Key,
+            youtubeUrl: uploadedFile.youtubeUrl ?? null,
           };
         },
       );
@@ -60,7 +54,11 @@ export const processVideo = inngest.createFunction(
 
         await step.fetch(env.PROCESS_VIDEO_ENDPOINT, {
           method: "POST",
-          body: JSON.stringify({ s3_key: s3Key }),
+          body: JSON.stringify(
+            youtubeUrl
+              ? { youtube_url: youtubeUrl, s3_key: s3Key.split("/")[0] }
+              : { s3_key: s3Key }
+          ),
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${env.PROCESS_VIDEO_ENDPOINT_AUTH}`,

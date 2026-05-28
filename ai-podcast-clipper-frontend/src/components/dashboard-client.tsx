@@ -16,7 +16,8 @@ import { Loader2, UploadCloud } from "lucide-react";
 import { useState } from "react";
 import { generateUploadUrl } from "~/actions/s3";
 import { toast } from "sonner";
-import { processVideo } from "~/actions/generation";
+import { processVideo, processYouTubeVideo } from "~/actions/generation";
+import { Input } from "./ui/input";
 import {
   Table,
   TableBody,
@@ -46,6 +47,8 @@ export function DashboardClient({
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [processingYoutube, setProcessingYoutube] = useState(false);
   const router = useRouter();
 
   const handleRefresh = async () => {
@@ -56,6 +59,23 @@ export function DashboardClient({
 
   const handleDrop = (acceptedFiles: File[]) => {
     setFiles(acceptedFiles);
+  };
+
+  const handleYoutubeSubmit = async () => {
+    if (!youtubeUrl) return;
+    setProcessingYoutube(true);
+    try {
+      await processYouTubeVideo(youtubeUrl);
+      setYoutubeUrl("");
+      toast.success("YouTube video queued for processing", {
+        description: "Check the queue status below.",
+        duration: 5000,
+      });
+    } catch {
+      toast.error("Failed to process YouTube URL");
+    } finally {
+      setProcessingYoutube(false);
+    }
   };
 
   const handleUpload = async () => {
@@ -102,6 +122,74 @@ export function DashboardClient({
     }
   };
 
+  const QueueStatus = () => (
+    <div className="pt-6">
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="text-md mb-2 font-medium">Queue status</h3>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRefresh}
+          disabled={refreshing}
+        >
+          {refreshing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          Refresh
+        </Button>
+      </div>
+      <div className="max-h-[300px] overflow-auto rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>File</TableHead>
+              <TableHead>Uploaded</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Clips created</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {uploadedFiles.map((item) => (
+              <TableRow key={item.id}>
+                <TableCell className="max-w-xs truncate font-medium">
+                  {item.filename}
+                </TableCell>
+                <TableCell className="text-muted-foreground text-sm">
+                  {new Date(item.createdAt).toLocaleDateString()}
+                </TableCell>
+                <TableCell>
+                  {item.status === "queued" && (
+                    <Badge variant="outline">Queued</Badge>
+                  )}
+                  {item.status === "processing" && (
+                    <Badge variant="outline">Processing</Badge>
+                  )}
+                  {item.status === "processed" && (
+                    <Badge variant="outline">Processed</Badge>
+                  )}
+                  {item.status === "no credits" && (
+                    <Badge variant="destructive">No credits</Badge>
+                  )}
+                  {item.status === "failed" && (
+                    <Badge variant="destructive">Failed</Badge>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {item.clipsCount > 0 ? (
+                    <span>
+                      {item.clipsCount} clip
+                      {item.clipsCount !== 1 ? "s" : ""}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">No clips yet</span>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+
   return (
     <div className="mx-auto flex max-w-5xl flex-col space-y-6 px-4 py-8">
       <div className="flex items-center justify-between">
@@ -121,9 +209,11 @@ export function DashboardClient({
       <Tabs defaultValue="upload">
         <TabsList>
           <TabsTrigger value="upload">Upload</TabsTrigger>
+          <TabsTrigger value="youtube">YouTube URL</TabsTrigger>
           <TabsTrigger value="my-clips">My Clips</TabsTrigger>
         </TabsList>
 
+        {/* ── Upload Tab ── */}
         <TabsContent value="upload">
           <Card>
             <CardHeader>
@@ -189,88 +279,58 @@ export function DashboardClient({
                 </Button>
               </div>
 
-              {uploadedFiles.length > 0 && (
-                <div className="pt-6">
-                  <div className="mb-2 flex items-center justify-between">
-                    <h3 className="text-md mb-2 font-medium">Queue status</h3>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleRefresh}
-                      disabled={refreshing}
-                    >
-                      {refreshing && (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      )}
-                      Refresh
-                    </Button>
-                  </div>
-                  <div className="max-h-[300px] overflow-auto rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>File</TableHead>
-                          <TableHead>Uploaded</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Clips created</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {uploadedFiles.map((item) => (
-                          <TableRow key={item.id}>
-                            <TableCell className="max-w-xs truncate font-medium">
-                              {item.filename}
-                            </TableCell>
-                            <TableCell className="text-muted-foreground text-sm">
-                              {new Date(item.createdAt).toLocaleDateString()}
-                            </TableCell>
-                            <TableCell>
-                              {item.status === "queued" && (
-                                <Badge variant="outline">Queued</Badge>
-                              )}
-                              {item.status === "processing" && (
-                                <Badge variant="outline">Processing</Badge>
-                              )}
-                              {item.status === "processed" && (
-                                <Badge variant="outline">Processed</Badge>
-                              )}
-                              {item.status === "no credits" && (
-                                <Badge variant="destructive">No credits</Badge>
-                              )}
-                              {item.status === "failed" && (
-                                <Badge variant="destructive">Failed</Badge>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              {item.clipsCount > 0 ? (
-                                <span>
-                                  {item.clipsCount} clip
-                                  {item.clipsCount !== 1 ? "s" : ""}
-                                </span>
-                              ) : (
-                                <span className="text-muted-foreground">
-                                  No clips yet
-                                </span>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
-              )}
+              {uploadedFiles.length > 0 && <QueueStatus />}
             </CardContent>
           </Card>
         </TabsContent>
 
+        {/* ── YouTube Tab ── */}
+        <TabsContent value="youtube">
+          <Card>
+            <CardHeader>
+              <CardTitle>Process YouTube Video</CardTitle>
+              <CardDescription>
+                Enter a YouTube URL to generate AI clips
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col space-y-4">
+                <Input
+                  placeholder="https://www.youtube.com/watch?v=..."
+                  value={youtubeUrl}
+                  onChange={(e) => setYoutubeUrl(e.target.value)}
+                  disabled={processingYoutube}
+                />
+                <div className="flex justify-end">
+                  <Button
+                    onClick={handleYoutubeSubmit}
+                    disabled={!youtubeUrl || processingYoutube}
+                  >
+                    {processingYoutube ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      "Generate Clips"
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              {uploadedFiles.length > 0 && <QueueStatus />}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── My Clips Tab ── */}
         <TabsContent value="my-clips">
           <Card>
             <CardHeader>
               <CardTitle>My Clips</CardTitle>
               <CardDescription>
                 View and manage your generated clips here. Processing may take a
-                few minuntes.
+                few minutes.
               </CardDescription>
             </CardHeader>
             <CardContent>
